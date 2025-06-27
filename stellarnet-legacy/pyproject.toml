@@ -1,0 +1,74 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "stellarnet-legacy"
+dynamic = ["version"]
+description = 'Python bindings for legacy StellarNet spectrometers.'
+readme = "README.md"
+requires-python = ">=3.8"
+license = "GPL-3.0-or-later"
+keywords = ["stellarnet"]
+authors = [
+  { name = "Brian Carlsen", email = "carlsen.bri@gmail.com" },
+]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Programming Language :: Python",
+  "Programming Language :: Python :: 3.8",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: Implementation :: CPython",
+  "Programming Language :: Python :: Implementation :: PyPy",
+]
+dependencies = [
+  "numpy"
+]
+
+[project.urls]
+Documentation = "https://github.com//uni-stuttgart-ipv/stellarnet-legacy-py#readme"
+Issues = "https://github.com//uni-stuttgart-ipv/stellarnet-legacy-py/issues"
+Source = "https://github.com//uni-stuttgart-ipv/stellarnet-legacy-py"
+
+[tool.hatch.version]
+path = "src/stellarnet_legacy/__about__.py"
+
+[tool.hatch.build]
+include = [
+  "src/stellarnet_legacy/data/stellarnet_api.dll"
+]
+
+[tool.hatch.build.targets.wheel.include]
+"stellarnet_legacy/data/**" = true
+
+[tool.hatch.envs.types]
+extra-dependencies = [
+  "mypy>=1.0.0",
+]
+[tool.hatch.envs.types.scripts]
+check = "mypy --install-types --non-interactive {args:src/stellarnet_legacy tests}"
+
+[tool.coverage.run]
+source_pkgs = ["stellarnet_legacy", "tests"]
+branch = true
+parallel = true
+omit = [
+  "src/stellarnet_legacy/__about__.py",
+]
+
+[tool.coverage.paths]
+stellarnet_legacy = ["src/stellarnet_legacy", "*/stellarnet-legacy/src/stellarnet_legacy"]
+tests = ["tests", "*/stellarnet-legacy/tests"]
+
+[tool.coverage.report]
+exclude_lines = [
+  "no cov",
+  "if __name__ == .__main__.:",
+  "if TYPE_CHECKING:",
+]
+
+[tool.uv.workspace]
+members = ["examples/basic"]
