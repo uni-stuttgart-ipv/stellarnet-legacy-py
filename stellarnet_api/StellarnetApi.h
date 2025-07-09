@@ -10,9 +10,10 @@
 
 /**
  @brief Launch the StellarNet API server process.
+ @param server_exe_path Path to the Stellarnet API server exectuable file.
  */
 extern "C" STELLARNETAPI_API
-void init();
+void init(const char* server_exe_path);
 
 /**
  @brief Kill the StellarNet API server process.

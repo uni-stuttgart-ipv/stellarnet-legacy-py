@@ -3,6 +3,7 @@ from importlib.resources import files
 
 dll_path = files("stellarnet_legacy.data").joinpath("stellarnet_api.dll")
 dll = c.WinDLL(str(dll_path))
+dll.init.argtypes = [c.c_char_p]
 dll.init.restype = None
 dll.kill.restype = None
 dll.open.restype = c.c_int

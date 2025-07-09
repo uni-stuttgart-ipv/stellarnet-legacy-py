@@ -9,3 +9,4 @@ Python bindings for legacy StellarNet spectrometers.
 ## `stellarnet_api` and `stellarnet_api_server` development
 Open the `stellarnet_api` project in Visual Studio. It includes the `stellarnet_api_server` project. 
 `stellarnet_api_server` must be compiled to 32-bit architecture to correclty load the StellarNet DLL.
+Post build events for both `stellarnet_api` and `stellarnet_api_server` copy the final dll and executable to the correct location in the Python package.

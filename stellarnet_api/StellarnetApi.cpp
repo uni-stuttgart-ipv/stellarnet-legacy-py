@@ -18,9 +18,10 @@ BOOL bSuccess;
 DWORD dwBytes;
 CHAR cmd[BUFSIZE];
 
-void launch_server(void);
+void launch_server(LPWSTR exe_path);
+std::wstring str_to_wstr(const char* input);
 
-void init() {
+void init(const char* server_exe_path) {
 	SECURITY_ATTRIBUTES saAttr;
 	saAttr.nLength = sizeof(SECURITY_ATTRIBUTES);
 	saAttr.bInheritHandle = TRUE;
@@ -38,12 +39,11 @@ void init() {
 		ExitProcess(GetLastError());
 	}
 
-	launch_server();
+	std::wstring exe_path = str_to_wstr(server_exe_path);
+	launch_server(&exe_path[0]);
 }
 
-void launch_server() {
-	// TODO: include server binary
-	TCHAR szCmdline[] = TEXT("C:\\Users\\ac146928\\Dropbox\\Documents\\School\\stuttgart\\projects\\stellarnet\\stellarnet_api\\Debug\\stellarnet_api_server.exe");
+void launch_server(LPWSTR exe_path) {
 	PROCESS_INFORMATION piProcInfo;
 	STARTUPINFO siStartInfo;
 	BOOL bSuccess = FALSE;
@@ -57,7 +57,7 @@ void launch_server() {
 	siStartInfo.dwFlags |= STARTF_USESTDHANDLES;
 	bSuccess = CreateProcess(
 		NULL,
-		szCmdline,
+		exe_path,
 		NULL,
 		NULL,
 		TRUE,
@@ -351,7 +351,7 @@ const int* gain_table(_int16 channel) {
 		ExitProcess(ERROR_READ_FAULT);
 	}
 
-	int table[GAIN_TABLE_SIZE];
+	int* table = new int[GAIN_TABLE_SIZE];
 	for (int i = 0; i < GAIN_TABLE_SIZE; ++i) {
 		table[i] = static_cast<int>(table32[i]);
 	}
@@ -387,4 +387,13 @@ int read_spectrometer_c(_int16 channel, float* data) {
 	}
 
 	return static_cast<int>(status);
+}
+
+
+std::wstring str_to_wstr(const char* input) {
+	std::string input_str = std::string(input);
+	int wlen = MultiByteToWideChar(CP_UTF8, 0, input_str.c_str(), -1, NULL, 0);
+	std::wstring wstr(wlen, 0);
+	MultiByteToWideChar(CP_UTF8, 0, input_str.c_str(), -1, &wstr[0], wlen);
+	return wstr;
 }
