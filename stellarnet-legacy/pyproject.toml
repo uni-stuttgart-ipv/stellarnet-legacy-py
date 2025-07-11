@@ -38,12 +38,12 @@ path = "src/stellarnet_legacy/__about__.py"
 
 [tool.hatch.build]
 include = [
-  "src/stellarnet_legacy/data/stellarnet_api.dll"
+  "src/stellarnet_legacy/data/*"
 ]
 
 [tool.hatch.build.targets.wheel]
 include = [
-  "stellarnet_legacy/data/**"
+  "stellarnet_legacy/data/*"
 ]
 
 [tool.hatch.envs.types]
