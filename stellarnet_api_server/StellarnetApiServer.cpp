@@ -44,6 +44,7 @@ void parse_command(const char* input, char* command, std::vector<std::string>& a
 bool stellarnet_path(LPWSTR path);
 void parse_gain_table(string table_str, int* gain_table);
 std::string wchar_to_string(const wchar_t* wpath);
+std::wstring string_to_wchar(const std::string& input);
 void rtrim(char* buffer);
 int string_to_int(string value);
 bool dir_exists(LPWSTR path);
@@ -193,10 +194,6 @@ int main() {
 				if (!bSuccess || dwBytes != sizeof(buffer)) {
 					ExitProcess(GetLastError());
 				}
-				/*bSuccess = WriteFile(hTx, name.data(), name.size(), &dwBytes, nullptr);
-				if (!bSuccess || dwBytes != name.size()) {
-					ExitProcess(GetLastError());
-				}*/
 			}
 		}
 		else if (strcmp(cmd, "calibration_coefficients") == 0) {
@@ -287,6 +284,7 @@ bool stellarnet_path(LPWSTR path) {
 	WCHAR path_t[MAX_PATH];
 	PWSTR program_files;
 	HRESULT res;
+	size_t env_len;
 
 	res = SHGetKnownFolderPath(FOLDERID_ProgramFiles, 0, nullptr, &program_files);
 	if (!SUCCEEDED(res)) {
@@ -300,31 +298,28 @@ bool stellarnet_path(LPWSTR path) {
 		ExitProcess(GetLastError());
 	};
 
+	CoTaskMemFree(program_files);
 	if (dir_exists(path_t)) {
 		wcscpy_s(path, MAX_PATH, path_t);
-		CoTaskMemFree(program_files);
 		return true;
 	}
 
-	res = SHGetKnownFolderPath(FOLDERID_ProgramFilesX64, 0, nullptr, &program_files);
-	if (!SUCCEEDED(res)) {
-		std::wcerr << L"Failed to get Program Files x64 path: " << res << std::endl;
-		ExitProcess(GetLastError());
+	WCHAR* path_env;
+	errno_t err = _wdupenv_s(&path_env, &env_len, L"ProgramW6432");
+	if (err) {
+		return false;
 	}
 
-	if (!PathCombine(path_t, program_files, STELLARNET_DLL_FOLDER)) {
+	if (!PathCombine(path_t, path_env, STELLARNET_DLL_FOLDER)) {
 		std::wcerr << L"Failed to combine paths." << std::endl;
-		CoTaskMemFree(program_files);
 		ExitProcess(GetLastError());
 	};
 	
 	if (dir_exists(path_t)) {
 		wcscpy_s(path, MAX_PATH, path_t);
-		CoTaskMemFree(program_files);
 		return true;
 	}
 
-	CoTaskMemFree(program_files);
 	return false;
 }
 
@@ -619,6 +614,15 @@ std::string wchar_to_string(const wchar_t* wpath) {
 	if (size <= 0) return {};
 	std::string result(size - 1, 0); // Exclude null terminator
 	WideCharToMultiByte(CP_UTF8, 0, wpath, -1, &result[0], size, nullptr, nullptr);
+	return result;
+}
+
+std::wstring string_to_wchar(const std::string& input) {
+	if (input.empty()) return {};
+	int size = MultiByteToWideChar(CP_UTF8, 0, input.c_str(), input.length(), nullptr, 0);
+	if (size <= 0) return {};
+	std::wstring result(size, 0);
+	MultiByteToWideChar(CP_UTF8, 0, input.c_str(), input.length(), &result[0], size);
 	return result;
 }
 
