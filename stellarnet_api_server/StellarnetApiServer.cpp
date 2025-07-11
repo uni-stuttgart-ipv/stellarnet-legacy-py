@@ -41,11 +41,12 @@ static BOOL g_LibraryOpen;
 HINSTANCE hDll;
 
 void parse_command(const char* input, char* command, std::vector<std::string>& args);
-void stellarnet_path(LPWSTR path);
+bool stellarnet_path(LPWSTR path);
 void parse_gain_table(string table_str, int* gain_table);
 std::string wchar_to_string(const wchar_t* wpath);
 void rtrim(char* buffer);
 int string_to_int(string value);
+bool dir_exists(LPWSTR path);
 
 int main() {
 	CHAR cmd_buffer[BUFSIZE];
@@ -80,7 +81,16 @@ int main() {
 		}
 		else if (strcmp(cmd, "stellarnet_path") == 0) {
 			LPWSTR path = new WCHAR[MAX_PATH];
-			stellarnet_path(path);
+			bool success = stellarnet_path(path);
+			bSuccess = WriteFile(hTx, &success, sizeof(success), &dwBytes, nullptr);
+			if (!bSuccess || dwBytes != sizeof(success)) {
+				ExitProcess(GetLastError());
+			}
+
+			if (!success) {
+				continue;
+			}
+
 			std::string path_str = wchar_to_string(path);
 			bSuccess = WriteFile(hTx, path_str.data(), path_str.size(), &dwBytes, nullptr);
 			if (!bSuccess || dwBytes != path_str.size()) {
@@ -273,21 +283,49 @@ void parse_command(const char* input, char* command, std::vector<std::string>& a
 	}
 }
 
-void stellarnet_path(LPWSTR path) {
+bool stellarnet_path(LPWSTR path) {
+	WCHAR path_t[MAX_PATH];
 	PWSTR program_files;
-	HRESULT res = SHGetKnownFolderPath(FOLDERID_ProgramFiles, 0, nullptr, &program_files);
+	HRESULT res;
+
+	res = SHGetKnownFolderPath(FOLDERID_ProgramFiles, 0, nullptr, &program_files);
 	if (!SUCCEEDED(res)) {
 		std::wcerr << L"Failed to get Program Files path: " << res << std::endl;
 		ExitProcess(GetLastError());
 	}
 
-	if (!PathCombine(path, program_files, STELLARNET_DLL_FOLDER)) {
+	if (!PathCombine(path_t, program_files, STELLARNET_DLL_FOLDER)) {
 		std::wcerr << L"Failed to combine paths." << std::endl;
 		CoTaskMemFree(program_files);
 		ExitProcess(GetLastError());
 	};
 
+	if (dir_exists(path_t)) {
+		wcscpy_s(path, MAX_PATH, path_t);
+		CoTaskMemFree(program_files);
+		return true;
+	}
+
+	res = SHGetKnownFolderPath(FOLDERID_ProgramFilesX64, 0, nullptr, &program_files);
+	if (!SUCCEEDED(res)) {
+		std::wcerr << L"Failed to get Program Files x64 path: " << res << std::endl;
+		ExitProcess(GetLastError());
+	}
+
+	if (!PathCombine(path_t, program_files, STELLARNET_DLL_FOLDER)) {
+		std::wcerr << L"Failed to combine paths." << std::endl;
+		CoTaskMemFree(program_files);
+		ExitProcess(GetLastError());
+	};
+	
+	if (dir_exists(path_t)) {
+		wcscpy_s(path, MAX_PATH, path_t);
+		CoTaskMemFree(program_files);
+		return true;
+	}
+
 	CoTaskMemFree(program_files);
+	return false;
 }
 
 int open() {
@@ -587,7 +625,7 @@ std::string wchar_to_string(const wchar_t* wpath) {
 
 int string_to_int(string value) {
 	string temp;
-	for (int i = 0; i < value.length(); i++) {
+	for (size_t i = 0; i < value.length(); i++) {
 		if (!isspace(value[i])) {
 			temp += value[i];
 		}
@@ -598,4 +636,15 @@ int string_to_int(string value) {
 	catch (...) {
 		return -1;
 	}
+}
+
+bool dir_exists(LPWSTR path) {
+	DWORD attrs = GetFileAttributesW(path);
+	if (attrs == INVALID_FILE_ATTRIBUTES)
+		return false;
+
+	if (attrs & FILE_ATTRIBUTE_DIRECTORY)
+		return true; 
+
+	return false;
 }

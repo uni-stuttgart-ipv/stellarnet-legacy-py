@@ -1,4 +1,4 @@
-from typing import Union
+from typing import Union, Optional
 from importlib.resources import files, path
 import ctypes as c
 import numpy as np
@@ -31,13 +31,15 @@ def close() -> None:
     """
     dll.close()
 
-def stellarnet_path() -> str:
+def stellarnet_path() -> Optional[str]:
     """
     Returns:
-        str: Path to StellarNet program resources.
+        Optional[str]: Path to StellarNet program resources or None if not found.
     """
     path = dll.stellarnet_path()
-    return path.decode()
+    return path.decode() if path else None
+    
+    
 
 def device_count() -> int:
     """

@@ -99,6 +99,16 @@ const char* stellarnet_path() {
 		ExitProcess(GetLastError());
 	}
 
+	bool success;
+	bSuccess = ReadFile(hClientRx, &success, sizeof(success), &dwBytes, NULL);
+	if (!bSuccess) {
+		ExitProcess(GetLastError());
+	}
+
+	if (!success) {
+		return NULL;
+	}
+
 	CHAR resp[BUFSIZE];
 	bSuccess = ReadFile(hClientRx, resp, BUFSIZE - 1, &dwBytes, NULL);
 	if (!bSuccess) {

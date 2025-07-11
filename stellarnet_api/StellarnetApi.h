@@ -23,7 +23,7 @@ void kill();
 
 /**
  @brief Get the path to the StellarNet program folder.
- @return Path to the StellarNet program directory.
+ @return Path to the StellarNet program directory or NULL if not found.
  @note Does not require `open` to be called first.
  */
 extern "C" STELLARNETAPI_API

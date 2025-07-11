@@ -5,6 +5,6 @@ description = "Simple app demonstrating how to use the `stellarnet-legacy` packa
 readme = "README.md"
 requires-python = ">=3.8"
 dependencies = [
-    "stellarnet-legacy @ file://../",
+    "stellarnet-legacy @ file://../..",
     "matplotlib",
 ]

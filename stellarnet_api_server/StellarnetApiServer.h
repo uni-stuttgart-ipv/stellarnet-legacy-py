@@ -6,8 +6,10 @@ using std::string;
 /**
  * @brief Gets the full path to the StellarNet program folder.
  * @param path Output buffer to receive the path.
+ * @return TRUE if a valid path is found, FALSE otherwise.
+ * If a valid path is not found the contents of `path` are unchanged.
  */
-void stellarnet_path(LPWSTR path);
+bool stellarnet_path(LPWSTR path);
 
 /**
  * @brief Opens and initializes the StellarNet library.
