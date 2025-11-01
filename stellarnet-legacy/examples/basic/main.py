@@ -34,7 +34,7 @@ sn.initialize_spectrometer(
 )
 
 data = sn.read_spectrometer_c(channel)
-if data is sn.ScanStatus:
+if isinstance(data, sn.ScanStatus):
     print(data)
 else:
     x = cal_coeffs.wavelengths()

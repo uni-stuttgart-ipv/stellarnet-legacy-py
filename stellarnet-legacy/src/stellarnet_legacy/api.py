@@ -43,8 +43,8 @@ def enable_logging(path: str) -> None:
     Args:
         path (str): File to write logs to.
     """
-    path = c.create_string_buffer(path.encode())
-    dll.enable_logging(path)
+    path_buf = c.create_string_buffer(path.encode())
+    dll.enable_logging(path_buf)
 
 
 def disable_logging() -> None:
@@ -218,14 +218,11 @@ def gain_table(
     return (gain_values, base_values)
 
 
-def read_spectrometer_c(
-    channel: int, timeout: Optional[int] = None
-) -> Union[np.ndarray, kinds.ScanStatus]:
+def read_spectrometer_c(channel: int) -> Union[np.ndarray, kinds.ScanStatus]:
     """Read a spectrum.
 
     Args:
         channel (int): Sprectrometer to read from.
-        timeout (Optional[int]): Number of seconds to wait before timing out.
 
     Returns:
         Union[np.ndarray, kinds.ScanStatus]: Intensity values or spectrometer status if values could not be obained.
