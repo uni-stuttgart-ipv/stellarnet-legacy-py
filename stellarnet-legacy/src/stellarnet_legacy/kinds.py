@@ -33,6 +33,8 @@ class CalibrationCoefficients:
     """Calibration coefficients.
 
     + `c1`, `c2`, and `c3` are used to calculate the spectrometer's measurement points in nanometers.
+    + `c4` is currently unused.
+    + Values for the coefficients can be found on the bottom spectrometer label.
     """
     def __init__(self, c1 = 0.2, c2 = 0.0, c3 = 300.0, c4 = 0.0):
         self.c1 = c1

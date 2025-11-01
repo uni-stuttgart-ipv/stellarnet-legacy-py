@@ -2,8 +2,12 @@
 #include "StellarnetApi.h"
 #include <tchar.h>
 #include <stdio.h>
+#include <fstream>
 #include <string>
+#include <time.h>
 #include <cstdint>
+#include <cstdarg>
+#include <chrono>
 
 #define BUFSIZE 1024
 #define DATA_BUFFER_SIZE 2051
@@ -18,8 +22,36 @@ BOOL bSuccess;
 DWORD dwBytes;
 CHAR cmd[BUFSIZE];
 
+std::string time_now_str();
+BOOL g_loggingEnabled = false;
+LPWSTR g_logPath;
+
+static bool send_command(const char* fmt, ...);
 void launch_server(LPWSTR exe_path);
 std::wstring str_to_wstr(const char* input);
+static std::string narrow_from_wide(const WCHAR* wpath);
+void log(std::string& message);
+
+static bool send_command(const char* fmt, ...) {
+	char buf[BUFSIZE];
+	va_list ap;
+	va_start(ap, fmt);
+	int n = vsnprintf(buf, sizeof(buf), fmt, ap);
+	va_end(ap);
+	if (n < 0) return false;
+
+	size_t len = static_cast<size_t>(n);
+	if (len >= sizeof(buf) - 1) len = sizeof(buf) - 2;
+	buf[len++] = '\n';
+	
+	DWORD written = 0;
+	BOOL ok = WriteFile(hClientTx, buf, static_cast<DWORD>(len), &written, NULL);
+	if (!ok || written != len) {
+		return false;
+	}
+
+	return true;
+}
 
 void init(const char* server_exe_path) {
 	SECURITY_ATTRIBUTES saAttr;
@@ -93,12 +125,48 @@ void kill() {
 	}
 }
 
-const char* stellarnet_path() {
-	bSuccess = WriteFile(hClientTx, "stellarnet_path", 15, NULL, NULL);
-	if (!bSuccess) {
+void enable_logging(const char* path) {
+	if (g_logPath != nullptr) {
+		delete[] g_logPath;
+		g_logPath = nullptr;
+	}
+
+	g_logPath = new WCHAR[MAX_PATH];
+	int conv = MultiByteToWideChar(CP_UTF8, 0, path, -1, g_logPath, MAX_PATH);
+	if (conv == 0) {
+		delete[] g_logPath;
+		g_logPath = nullptr;
+		return;
+	}
+	g_loggingEnabled = true;
+
+	if (!send_command("enable_logging %s", path)) {
+		ExitProcess(GetLastError());
+	}
+}
+
+void disable_logging() {
+
+	if (!send_command("disable_logging")) {
 		ExitProcess(GetLastError());
 	}
 
+	if (g_logPath != nullptr) {
+		delete[] g_logPath;
+		g_logPath = nullptr;
+	}
+	g_loggingEnabled = false;
+}
+
+const char* stellarnet_path() {
+	std::string log_msg;
+	log_msg = std::string("[cmd] stellarnet_path");
+	log(log_msg);
+
+	if (!send_command("stellarnet_path")) {
+		ExitProcess(GetLastError());
+	}
+	
 	bool success;
 	bSuccess = ReadFile(hClientRx, &success, sizeof(success), &dwBytes, NULL);
 	if (!bSuccess) {
@@ -121,12 +189,16 @@ const char* stellarnet_path() {
 		ExitProcess(GetLastError());
 	}
 	strcpy_s(out, strlen(resp) + 1, resp);
+
+	log_msg = std::string("[resp] stellarnet_path");
+	log(log_msg);
+
 	return out;
 }
 
 int open() {
-	bSuccess = WriteFile(hClientTx, "open", 4, NULL, NULL);
-	if (!bSuccess) {
+	
+	if (!send_command("open")) {
 		ExitProcess(GetLastError());
 	}
 
@@ -139,15 +211,15 @@ int open() {
 }
 
 void close() {
-	bSuccess = WriteFile(hClientTx, "close", 5, NULL, NULL);
-	if (!bSuccess) {
+	
+	if (!send_command("close")) {
 		ExitProcess(GetLastError());
 	}
 }
 
 int device_count() {
-	bSuccess = WriteFile(hClientTx, "device_count", 12, NULL, NULL);
-	if (!bSuccess) {
+	
+	if (!send_command("device_count")) {
 		ExitProcess(GetLastError());
 	}
 
@@ -164,19 +236,15 @@ int device_count() {
 }
 
 void set_integration_time(int rate) {
-	snprintf(cmd, sizeof(cmd), "set_integration_time %d", rate);
-	dwBytes = static_cast<DWORD>(strlen(cmd));
-	bSuccess = WriteFile(hClientTx, &cmd, dwBytes, NULL, NULL);
-	if (!bSuccess) {
+	
+	if (!send_command("set_integration_time %d", rate)) {
 		ExitProcess(GetLastError());
 	}
 }
 
 int scan(_int16 channel, float* data) {
-	snprintf(cmd, sizeof(cmd), "scan %d", channel);
-	dwBytes = static_cast<DWORD>(strlen(cmd));
-	bSuccess = WriteFile(hClientTx, &cmd, dwBytes, NULL, NULL);
-	if (!bSuccess) {
+	
+	if (!send_command("scan %d", channel)) {
 		ExitProcess(GetLastError());
 	}
 
@@ -204,10 +272,8 @@ int scan(_int16 channel, float* data) {
 
 
 int scan_c(_int16 channel, float* data) {
-	snprintf(cmd, sizeof(cmd), "scan_c %d", channel);
-	dwBytes = static_cast<DWORD>(strlen(cmd));
-	bSuccess = WriteFile(hClientTx, &cmd, dwBytes, NULL, NULL);
-	if (!bSuccess) {
+	
+	if (!send_command("scan_c %d", channel)) {
 		ExitProcess(GetLastError());
 	}
 
@@ -234,10 +300,8 @@ int scan_c(_int16 channel, float* data) {
 }
 
 void read_ee_prom(_int16 channel, _int16 address, char* data) {
-	snprintf(cmd, sizeof(cmd), "read_ee_prom %d %d", channel, address);
-	dwBytes = static_cast<DWORD>(strlen(cmd));
-	bSuccess = WriteFile(hClientTx, &cmd, dwBytes, NULL, NULL);
-	if (!bSuccess) {
+	
+	if (!send_command("read_ee_prom %d %d", channel, address)) {
 		ExitProcess(GetLastError());
 	}
 
@@ -251,10 +315,8 @@ void read_ee_prom(_int16 channel, _int16 address, char* data) {
 }
 
 int set_update(int n_scans, int window, int temperature_compensation) {
-	snprintf(cmd, sizeof(cmd), "set_update %d %d %d", n_scans, window, temperature_compensation);
-	dwBytes = static_cast<DWORD>(strlen(cmd));
-	bSuccess = WriteFile(hClientTx, &cmd, dwBytes, NULL, NULL);
-	if (!bSuccess) {
+	
+	if (!send_command("set_update %d %d %d", n_scans, window, temperature_compensation)) {
 		ExitProcess(GetLastError());
 	}
 	int32_t resp;
@@ -269,19 +331,15 @@ int set_update(int n_scans, int window, int temperature_compensation) {
 }
 
 void set_x_timing(int rate) {
-	snprintf(cmd, sizeof(cmd), "set_x_timing %d", rate);
-	dwBytes = static_cast<DWORD>(strlen(cmd));
-	bSuccess = WriteFile(hClientTx, &cmd, dwBytes, NULL, NULL);
-	if (!bSuccess) {
+	
+	if (!send_command("set_x_timing %d", rate)) {
 		ExitProcess(GetLastError());
 	}
 }
 
 const char* device_name(_int16 channel) {
-	snprintf(cmd, sizeof(cmd), "device_name %d", channel);
-	dwBytes = static_cast<DWORD>(strlen(cmd));
-	bSuccess = WriteFile(hClientTx, &cmd, dwBytes, NULL, NULL);
-	if (!bSuccess) {
+	
+	if (!send_command("device_name %d", channel)) {
 		ExitProcess(GetLastError());
 	}
 
@@ -301,10 +359,8 @@ const char* device_name(_int16 channel) {
 }
 
 int calibration_coefficients(_int16 channel, double* coeffs) {
-	snprintf(cmd, sizeof(cmd), "calibration_coefficients %d", channel);
-	dwBytes = static_cast<DWORD>(strlen(cmd));
-	bSuccess = WriteFile(hClientTx, &cmd, dwBytes, NULL, NULL);
-	if (!bSuccess) {
+	
+	if (!send_command("calibration_coefficients %d", channel)) {
 		ExitProcess(GetLastError());
 	}
 
@@ -327,28 +383,22 @@ int calibration_coefficients(_int16 channel, double* coeffs) {
 }
 
 void initialize_spectrometer(int integration_time, int scans_to_avg, int smoothing_window, int x_timing, BOOL temperature_compensation) {
-	snprintf(
-		cmd,
-		sizeof(cmd),
+	
+	if (!send_command(
 		"initialize_spectrometer %d %d %d %d %d",
 		integration_time,
 		scans_to_avg,
 		smoothing_window,
 		x_timing,
 		temperature_compensation
-	);
-	dwBytes = static_cast<DWORD>(strlen(cmd));
-	bSuccess = WriteFile(hClientTx, &cmd, dwBytes, NULL, NULL);
-	if (!bSuccess) {
+	)) {
 		ExitProcess(GetLastError());
 	}
 }
 
 const int* gain_table(_int16 channel) {
-	snprintf(cmd, sizeof(cmd), "gain_table %d", channel);
-	dwBytes = static_cast<DWORD>(strlen(cmd));
-	bSuccess = WriteFile(hClientTx, &cmd, dwBytes, NULL, NULL);
-	if (!bSuccess) {
+	
+	if (!send_command("gain_table %d", channel)) {
 		ExitProcess(GetLastError());
 	}
 
@@ -370,10 +420,11 @@ const int* gain_table(_int16 channel) {
 }
 
 int read_spectrometer_c(_int16 channel, float* data) {
-	snprintf(cmd, sizeof(cmd), "read_spectrometer_c %d", channel);
-	dwBytes = static_cast<DWORD>(strlen(cmd));
-	bSuccess = WriteFile(hClientTx, &cmd, dwBytes, NULL, NULL);
-	if (!bSuccess) {
+	std::string log_msg;
+	log_msg = std::string("[cmd] read_spectrometer_c");
+	log(log_msg);
+
+	if (!send_command("read_spectrometer_c %d", channel)) {
 		ExitProcess(GetLastError());
 	}
 
@@ -396,6 +447,8 @@ int read_spectrometer_c(_int16 channel, float* data) {
 		}
 	}
 
+	log_msg = std::string("[resp] read_spectrometer_c");
+	log(log_msg);
 	return static_cast<int>(status);
 }
 
@@ -406,4 +459,38 @@ std::wstring str_to_wstr(const char* input) {
 	std::wstring wstr(wlen, 0);
 	MultiByteToWideChar(CP_UTF8, 0, input_str.c_str(), -1, &wstr[0], wlen);
 	return wstr;
+}
+
+static std::string narrow_from_wide(const WCHAR* wpath) {
+	if (!wpath) return std::string();
+	int size = WideCharToMultiByte(CP_UTF8, 0, wpath, -1, nullptr, 0, nullptr, nullptr);
+	if (size <= 0) return std::string();
+	std::string out(size - 1, '\0');
+	WideCharToMultiByte(CP_UTF8, 0, wpath, -1, &out[0], size, nullptr, nullptr);
+	return out;
+}
+
+void log(std::string& message) {
+	std::ofstream log_file;
+
+	if (g_loggingEnabled && g_logPath != nullptr) {
+		std::string path = narrow_from_wide(g_logPath);
+		log_file.open(path, std::ios_base::app);
+		if (log_file.is_open()) {
+			log_file << "{\"source\": \"api\", \"timestamp\": \"" << time_now_str() << "\", \"msg\": \"" << message << "\"}" << std::endl;
+			log_file.close();
+		}
+		
+	}
+}
+
+std::string time_now_str() {
+	struct tm local_time;
+	errno_t err;
+	auto now = std::chrono::system_clock::now();
+	std::time_t current_time = std::chrono::system_clock::to_time_t(now);
+	err = localtime_s(&local_time, &current_time);
+	char buffer[40];
+	std::strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S", &local_time);
+	return buffer;
 }

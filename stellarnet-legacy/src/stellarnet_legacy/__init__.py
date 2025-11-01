@@ -19,6 +19,8 @@ from .api import (
     kill, 
     open, 
     close,
+    enable_logging,
+    disable_logging,
     stellarnet_path,
     device_count,
     set_integration_time,

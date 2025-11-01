@@ -5,31 +5,52 @@ import numpy as np
 from . import kinds
 from .lib import dll
 
+
 def init() -> None:
     """Start the message server.
     Must run this before any other commands.
     """
-    module_path = str(files("stellarnet_legacy.data").joinpath("stellarnet_api_server.exe"))
+    module_path = str(
+        files("stellarnet_legacy.data").joinpath("stellarnet_api_server.exe")
+    )
     module_path = c.create_string_buffer(module_path.encode())
     dll.init(module_path)
 
+
 def kill() -> None:
-    """Kill the message server.
-    """
+    """Kill the message server."""
     dll.kill
 
+
 def open() -> None:
-    """Open the StellarNet DLL. 
+    """Open the StellarNet DLL.
     Required to run this before call functions that interact with the spectrometers.
     """
     res = dll.open()
     if res != True:
         RuntimeError("Could not open Stellarnet DLL")
 
+
 def close() -> None:
-    """Close the StellarNet DLL.
-    """
+    """Close the StellarNet DLL."""
     dll.close()
+
+
+def enable_logging(path: str) -> None:
+    """Enable logging.
+    Updates the logging path if logging is already enabled.
+
+    Args:
+        path (str): File to write logs to.
+    """
+    path = c.create_string_buffer(path.encode())
+    dll.enable_logging(path)
+
+
+def disable_logging() -> None:
+    """Disable logging."""
+    dll.disable_logging()
+
 
 def stellarnet_path() -> Optional[str]:
     """
@@ -38,8 +59,7 @@ def stellarnet_path() -> Optional[str]:
     """
     path = dll.stellarnet_path()
     return path.decode() if path else None
-    
-    
+
 
 def device_count() -> int:
     """
@@ -48,8 +68,10 @@ def device_count() -> int:
     """
     return dll.device_count()
 
+
 def set_integration_time(time: int) -> None:
     dll.set_integration_time(time)
+
 
 def scan(channel: int) -> Union[np.ndarray, kinds.ScanStatus]:
     """Acquire a spectrometer's scan data.
@@ -69,11 +91,12 @@ def scan(channel: int) -> Union[np.ndarray, kinds.ScanStatus]:
     status = kinds.ScanStatus(status)
     if status is not kinds.ScanStatus.SUCCESS:
         return status
-    
+
     return np.array(data)
 
+
 def scan_c(channel: int) -> Union[np.ndarray, kinds.ScanStatus]:
-    """Acquire spectrometer scan data 
+    """Acquire spectrometer scan data
 
     Note:
         You probably don't want to call this directly.
@@ -90,17 +113,24 @@ def scan_c(channel: int) -> Union[np.ndarray, kinds.ScanStatus]:
     status = kinds.ScanStatus(status)
     if status is not kinds.ScanStatus.SUCCESS:
         return status
-    
+
     return np.array(data)
+
 
 def read_ee_prom(channel: int, address: int) -> str:
     data = c.create_string_buffer(kinds.EE_PROM_DATA_SIZE)
     dll.read_ee_prom(channel, address, data)
     return data.value
 
-def set_update(n_scans: int, smoothing_window: kinds.SmoothingWindow, temperature_compensation: kinds.TemperatureCompensation) -> int:
+
+def set_update(
+    n_scans: int,
+    smoothing_window: kinds.SmoothingWindow,
+    temperature_compensation: kinds.TemperatureCompensation,
+) -> int:
     res = dll.set_update(n_scans, smoothing_window, temperature_compensation)
     return res
+
 
 def set_x_timing(rate: kinds.XTiming) -> None:
     """Set spectrometer readout speed.
@@ -110,9 +140,11 @@ def set_x_timing(rate: kinds.XTiming) -> None:
     """
     dll.set_x_timing(rate)
 
+
 def device_name(channel: int) -> str:
     name = dll.device_name(channel)
     return name.decode()
+
 
 def calibration_coefficients(channel: int) -> kinds.CalibrationCoefficients:
     """Get callibration coefficients for a spectrometer.
@@ -126,16 +158,19 @@ def calibration_coefficients(channel: int) -> kinds.CalibrationCoefficients:
     coeffs = (c.c_double * 4)()
     resp = dll.calibration_coefficients(channel, coeffs)
     if resp == 0:
-        return kinds.CalibrationCoefficients(c1=coeffs[0], c2=coeffs[1], c3=coeffs[2], c4=coeffs[3])
+        return kinds.CalibrationCoefficients(
+            c1=coeffs[0], c2=coeffs[1], c3=coeffs[2], c4=coeffs[3]
+        )
     else:
         return kinds.CalibrationCoefficients()
+
 
 def initialize_spectrometer(
     integration_time: int,
     scans_to_avg: int,
-    smoothing_window: kinds.SmoothingWindow, 
-    x_timing: kinds.XTiming, 
-    temperature_compensation: kinds.TemperatureCompensation
+    smoothing_window: kinds.SmoothingWindow,
+    x_timing: kinds.XTiming,
+    temperature_compensation: kinds.TemperatureCompensation,
 ) -> None:
     """Initialize a spectrometer whith the given parameters.
 
@@ -157,14 +192,17 @@ def initialize_spectrometer(
         raise ValueError("Minimum integration time for XTiming.SLOW is 30 ms.")
 
     dll.initialize_spectrometer(
-        integration_time, 
-        scans_to_avg, 
+        integration_time,
+        scans_to_avg,
         smoothing_window.value,
         x_timing.value,
         temperature_compensation.value,
     )
 
-def gain_table(channel: int) -> tuple[tuple[int, int, int, int, int], tuple[int, int, int, int, int]]:
+
+def gain_table(
+    channel: int,
+) -> tuple[tuple[int, int, int, int, int], tuple[int, int, int, int, int]]:
     """Get gain table values.
 
     Args:
@@ -178,12 +216,16 @@ def gain_table(channel: int) -> tuple[tuple[int, int, int, int, int], tuple[int,
     gain_values = tuple(table[:5])
     base_values = tuple(table[5:GAIN_TABLE_SIZE])
     return (gain_values, base_values)
-    
-def read_spectrometer_c(channel: int) -> Union[np.ndarray, kinds.ScanStatus]:
+
+
+def read_spectrometer_c(
+    channel: int, timeout: Optional[int] = None
+) -> Union[np.ndarray, kinds.ScanStatus]:
     """Read a spectrum.
 
     Args:
         channel (int): Sprectrometer to read from.
+        timeout (Optional[int]): Number of seconds to wait before timing out.
 
     Returns:
         Union[np.ndarray, kinds.ScanStatus]: Intensity values or spectrometer status if values could not be obained.
@@ -193,5 +235,5 @@ def read_spectrometer_c(channel: int) -> Union[np.ndarray, kinds.ScanStatus]:
     status = kinds.ScanStatus(status)
     if status is not kinds.ScanStatus.SUCCESS:
         return status
-    
-    return np.array(data[:kinds.NUMBER_OF_PIXELS])
+
+    return np.array(data[: kinds.NUMBER_OF_PIXELS])

@@ -3,17 +3,27 @@
 #include <ShlObj.h>
 #include <Shlwapi.h>
 #include <iostream>
+#include <fstream>
+#include <filesystem>
 #include <stdio.h>
 #include <cstdint>
 #include <string>
 #include <sstream>
 #include <vector>
+#include <chrono>
+#include <time.h>
 #include "StellarnetApiServer.h"
+
 
 #define BUFSIZE 1024
 #define DATA_BUFFER_SIZE 2051
 #define GAIN_TABLE_SIZE 1024
 #define EE_PROM_DATA_SIZE 32
+
+std::string time_now_str();
+BOOL g_loggingEnabled = false;
+LPWSTR g_logPath = nullptr;
+void log(std::string& message);
 
 const wchar_t* STELLARNET_DLL_FOLDER = L"StellarNet\\SpectraWiz";
 
@@ -41,22 +51,23 @@ static BOOL g_LibraryOpen;
 HINSTANCE hDll;
 
 void parse_command(const char* input, char* command, std::vector<std::string>& args);
+bool process_command(char* cmd, std::vector<std::string> args, HANDLE hTx);
 bool stellarnet_path(LPWSTR path);
 void parse_gain_table(string table_str, int* gain_table);
 std::string wchar_to_string(const wchar_t* wpath);
 std::wstring string_to_wchar(const std::string& input);
+static std::string narrow_from_wide(const WCHAR* wpath);
 void rtrim(char* buffer);
 int string_to_int(string value);
 bool dir_exists(LPWSTR path);
 
 int main() {
 	CHAR cmd_buffer[BUFSIZE];
-	CHAR cmd[BUFSIZE];
 	std::vector<std::string> args;
-	DWORD dwBytes;
 	HANDLE hRx, hTx;
+	DWORD dwBytes;
 	BOOL bSuccess;
-	float data[DATA_BUFFER_SIZE] = { 0.0f };
+	BOOL bContinue = true;
 
 	hTx = GetStdHandle(STD_OUTPUT_HANDLE);
 	hRx = GetStdHandle(STD_INPUT_HANDLE);
@@ -76,186 +87,243 @@ int main() {
 			continue;
 		}
 
-		parse_command(cmd_buffer, cmd, args);
-		if (strcmp(cmd, "kill") == 0) {
+		std::string incoming(cmd_buffer, dwBytes);
+		size_t start = 0;
+		while (start < incoming.size()) {
+			size_t nl = incoming.find('\n', start);
+			if (nl == std::string::npos) nl = incoming.size();
+			std::string line = incoming.substr(start, nl - start);
+			if (!line.empty() && line.back() == '\r') line.pop_back();
+			if (!line.empty()) {
+				std::string log_msg;
+				log_msg.reserve(32 + line.size());
+				log_msg = "[cmd] ";
+				log_msg.append(line);
+				log(log_msg);
+
+				CHAR cmd_local[BUFSIZE] = { 0 };
+				std::vector<std::string> args_local;
+				parse_command(line.c_str(), cmd_local, args_local);
+				bContinue = process_command(cmd_local, args_local, hTx);
+				if (!bContinue) {
+					break;
+				}
+
+			}
+			start = nl + 1;
+		}
+		if (!bContinue) {
 			break;
 		}
-		else if (strcmp(cmd, "stellarnet_path") == 0) {
-			LPWSTR path = new WCHAR[MAX_PATH];
-			bool success = stellarnet_path(path);
-			bSuccess = WriteFile(hTx, &success, sizeof(success), &dwBytes, nullptr);
-			if (!bSuccess || dwBytes != sizeof(success)) {
-				ExitProcess(GetLastError());
-			}
+	}
+	return 0;
+}
 
-			if (!success) {
-				continue;
-			}
+bool process_command(char* cmd, std::vector<std::string> args, HANDLE hTx) {
+	DWORD dwBytes;
+	BOOL bSuccess;
+	float data[DATA_BUFFER_SIZE] = { 0.0f };
 
-			std::string path_str = wchar_to_string(path);
-			bSuccess = WriteFile(hTx, path_str.data(), path_str.size(), &dwBytes, nullptr);
-			if (!bSuccess || dwBytes != path_str.size()) {
-				ExitProcess(GetLastError());
-			}
+	if (strcmp(cmd, "kill") == 0) {
+		return false;
+	}
+	else if (strcmp(cmd, "enable_logging") == 0) {
+		if (g_logPath != nullptr) {
+			delete[] g_logPath;
+			g_logPath = nullptr;
 		}
-		else if (strcmp(cmd, "open") == 0) {
-			int res = open();
-			bSuccess = WriteFile(hTx, &res, sizeof(res), &dwBytes, nullptr);
-			if (!bSuccess || dwBytes != sizeof(res)) {
-				ExitProcess(GetLastError());
-			}
-		}
-		else if (strcmp(cmd, "close") == 0) {
-			close();
-		}
-		else if (strcmp(cmd, "device_count") == 0) {
-			int count = device_count();
-			bSuccess = WriteFile(hTx, &count, sizeof(count), &dwBytes, nullptr);
-			if (!bSuccess || dwBytes != sizeof(count)) {
-				ExitProcess(GetLastError());
-			}
-		}
-		else if (strcmp(cmd, "set_integration_time") == 0) {
-			int rate = std::stoi(args[0].c_str(), nullptr);
-			set_integration_time(rate);
-		}
-		else if (strcmp(cmd, "scan") == 0) {
-			int channel = std::stoi(args[0].c_str(), nullptr);
-			int status = scan(channel, data);
 
-			bSuccess = WriteFile(hTx, &status, sizeof(status), &dwBytes, nullptr);
-			if (!bSuccess || dwBytes != sizeof(status)) {
-				ExitProcess(GetLastError());
-			}
-
-			if (status == 0) {
-				bSuccess = WriteFile(hTx, data, sizeof(data), &dwBytes, nullptr);
-				if (!bSuccess || dwBytes != sizeof(data)) {
-					ExitProcess(GetLastError());
-				}
-			}
+		g_logPath = new WCHAR[MAX_PATH];
+		int conv = MultiByteToWideChar(CP_UTF8, 0, args[0].c_str(), -1, g_logPath, MAX_PATH);
+		if (conv == 0) {
+			delete[] g_logPath;
+			g_logPath = nullptr;
+			return true;
 		}
-		else if (strcmp(cmd, "scan_c") == 0) {
-			int channel = std::stoi(args[0].c_str(), nullptr);
-			int status = scan_c(channel, data);
-
-			bSuccess = WriteFile(hTx, &status, sizeof(status), &dwBytes, nullptr);
-			if (!bSuccess || dwBytes != sizeof(status)) {
-				ExitProcess(GetLastError());
-			}
-
-			if (status == 0) {
-				bSuccess = WriteFile(hTx, data, sizeof(data), &dwBytes, nullptr);
-				if (!bSuccess || dwBytes != sizeof(data)) {
-					ExitProcess(GetLastError());
-				}
-			}
+		g_loggingEnabled = true;
+	}
+	else if (strcmp(cmd, "disable_logging") == 0) {
+		if (g_logPath != nullptr) {
+			delete[] g_logPath;
+			g_logPath = nullptr;
 		}
-		else if (strcmp(cmd, "read_ee_prom") == 0) {
-			int channel = std::stoi(args[0].c_str(), nullptr);
-			int address = std::stoi(args[1].c_str(), nullptr);
-			char data[EE_PROM_DATA_SIZE];
+		g_loggingEnabled = false;
+	}
+	else if (strcmp(cmd, "stellarnet_path") == 0) {
+		LPWSTR path = new WCHAR[MAX_PATH];
+		bool success = stellarnet_path(path);
+		bSuccess = WriteFile(hTx, &success, sizeof(success), &dwBytes, nullptr);
+		if (!bSuccess || dwBytes != sizeof(success)) {
+			ExitProcess(GetLastError());
+		}
 
-			read_ee_prom(channel, address, data);
-			bSuccess = WriteFile(hTx, &data, sizeof(data), &dwBytes, nullptr);
+		if (!success) {
+			return true;
+		}
+
+		std::string path_str = wchar_to_string(path);
+		bSuccess = WriteFile(hTx, path_str.data(), path_str.size(), &dwBytes, nullptr);
+		if (!bSuccess || dwBytes != path_str.size()) {
+			ExitProcess(GetLastError());
+		}
+	}
+	else if (strcmp(cmd, "open") == 0) {
+		int res = open();
+		bSuccess = WriteFile(hTx, &res, sizeof(res), &dwBytes, nullptr);
+		if (!bSuccess || dwBytes != sizeof(res)) {
+			ExitProcess(GetLastError());
+		}
+	}
+	else if (strcmp(cmd, "close") == 0) {
+		close();
+	}
+	else if (strcmp(cmd, "device_count") == 0) {
+		int count = device_count();
+		bSuccess = WriteFile(hTx, &count, sizeof(count), &dwBytes, nullptr);
+		if (!bSuccess || dwBytes != sizeof(count)) {
+			ExitProcess(GetLastError());
+		}
+	}
+	else if (strcmp(cmd, "set_integration_time") == 0) {
+		int rate = std::stoi(args[0].c_str(), nullptr);
+		set_integration_time(rate);
+	}
+	else if (strcmp(cmd, "scan") == 0) {
+		int channel = std::stoi(args[0].c_str(), nullptr);
+		int status = scan(channel, data);
+
+		bSuccess = WriteFile(hTx, &status, sizeof(status), &dwBytes, nullptr);
+		if (!bSuccess || dwBytes != sizeof(status)) {
+			ExitProcess(GetLastError());
+		}
+
+		if (status == 0) {
+			bSuccess = WriteFile(hTx, data, sizeof(data), &dwBytes, nullptr);
 			if (!bSuccess || dwBytes != sizeof(data)) {
 				ExitProcess(GetLastError());
 			}
 		}
-		else if (strcmp(cmd, "set_update") == 0) {
-			int n_scans = std::stoi(args[0].c_str(), nullptr);
-			int window = std::stoi(args[1].c_str(), nullptr);
-			int temperature_compensation = std::stoi(args[2].c_str(), nullptr);
+	}
+	else if (strcmp(cmd, "scan_c") == 0) {
+		int channel = std::stoi(args[0].c_str(), nullptr);
+		int status = scan_c(channel, data);
 
-			int res = set_update(n_scans, window, temperature_compensation);
-			bSuccess = WriteFile(hTx, &res, sizeof(res), &dwBytes, nullptr);
-			if (!bSuccess || dwBytes != sizeof(res)) {
+		bSuccess = WriteFile(hTx, &status, sizeof(status), &dwBytes, nullptr);
+		if (!bSuccess || dwBytes != sizeof(status)) {
+			ExitProcess(GetLastError());
+		}
+
+		if (status == 0) {
+			bSuccess = WriteFile(hTx, data, sizeof(data), &dwBytes, nullptr);
+			if (!bSuccess || dwBytes != sizeof(data)) {
 				ExitProcess(GetLastError());
 			}
-		}
-		else if (strcmp(cmd, "set_x_timing") == 0) {
-			int rate = std::stoi(args[0].c_str(), nullptr);
-			set_x_timing(rate);
-		}
-		else if (strcmp(cmd, "device_name") == 0) {
-			int channel = std::stoi(args[0].c_str(), nullptr);
-			std::string name = device_name(channel);
-			if (name.empty()) {
-				char empty[BUFSIZE] = { 0 };
-				bSuccess = WriteFile(hTx, empty, sizeof(empty), &dwBytes, nullptr);
-				if (!bSuccess || dwBytes != sizeof(empty)) {
-					ExitProcess(GetLastError());
-				}
-			}
-			else {
-				char buffer[BUFSIZE] = { 0 };
-				strncpy_s(buffer, name.c_str(), sizeof(buffer) - 1);
-				bSuccess = WriteFile(hTx, buffer, sizeof(buffer), &dwBytes, nullptr);
-				if (!bSuccess || dwBytes != sizeof(buffer)) {
-					ExitProcess(GetLastError());
-				}
-			}
-		}
-		else if (strcmp(cmd, "calibration_coefficients") == 0) {
-			_int16 channel = std::stoi(args[0].c_str(), nullptr);
-			double c1, c2, c3, c4;
-			int res = calibration_coefficients(channel, &c1, &c2, &c3, &c4);
-			bSuccess = WriteFile(hTx, &res, sizeof(res), &dwBytes, nullptr);
-			if (!bSuccess || dwBytes != sizeof(res)) {
-				ExitProcess(GetLastError());
-			}
-			if (res == 0) {
-				double coeffs[] = { c1, c2, c3, c4 };
-				bSuccess = WriteFile(hTx, coeffs, sizeof(double) * 4, &dwBytes, nullptr);
-				if (!bSuccess || dwBytes != sizeof(double) * 4) {
-					ExitProcess(GetLastError());
-				}
-			}
-		}
-		else if (strcmp(cmd, "initialize_spectrometer") == 0) {
-			int integration_time = std::stoi(args[0].c_str(), nullptr);
-			int scans_to_avg = std::stoi(args[1].c_str(), nullptr);
-			int smoothing_window = std::stoi(args[2].c_str(), nullptr);
-			int x_timing = std::stoi(args[3].c_str(), nullptr);
-			BOOL temperature_compensation = (args[4] == "1") ? TRUE : FALSE;
-			initialize_spectrometer(integration_time, scans_to_avg, smoothing_window, x_timing, temperature_compensation);
-		}
-		else if (strcmp(cmd, "gain_table") == 0) {
-			char table_str_raw[BUFSIZE] = { 0 };
-			int gain_table[10] = { 0 };
-			_int16 channel = std::stoi(args[0].c_str(), nullptr);
-			get_gain_table(channel, table_str_raw);
-			table_str_raw[BUFSIZE - 1] = '\0';
-			string table_str(table_str_raw);
-			parse_gain_table(table_str, gain_table);
-
-			bSuccess = WriteFile(hTx, gain_table, sizeof(gain_table), &dwBytes, nullptr);
-			if (!bSuccess || dwBytes != sizeof(gain_table)) {
-				ExitProcess(GetLastError());
-			}
-		}
-		else if (strcmp(cmd, "read_spectrometer_c") == 0) {
-			int channel = std::stoi(args[0].c_str(), nullptr);
-			int status = read_spectrometer_c(channel, data);
-
-			bSuccess = WriteFile(hTx, &status, sizeof(status), &dwBytes, nullptr);
-			if (!bSuccess || dwBytes != sizeof(status)) {
-				ExitProcess(GetLastError());
-			}
-
-			if (status == 0) {
-				bSuccess = WriteFile(hTx, data, sizeof(data), &dwBytes, nullptr);
-				if (!bSuccess || dwBytes != sizeof(data)) {
-					ExitProcess(GetLastError());
-				}
-			}
-			}
-		else {
-			std::cerr << "Unknown command: " << cmd_buffer << std::endl;
-			ExitProcess(ERROR_PROC_NOT_FOUND);
 		}
 	}
-	return 0;
+	else if (strcmp(cmd, "read_ee_prom") == 0) {
+		int channel = std::stoi(args[0].c_str(), nullptr);
+		int address = std::stoi(args[1].c_str(), nullptr);
+		char data[EE_PROM_DATA_SIZE];
+
+		read_ee_prom(channel, address, data);
+		bSuccess = WriteFile(hTx, &data, sizeof(data), &dwBytes, nullptr);
+		if (!bSuccess || dwBytes != sizeof(data)) {
+			ExitProcess(GetLastError());
+		}
+	}
+	else if (strcmp(cmd, "set_update") == 0) {
+		int n_scans = std::stoi(args[0].c_str(), nullptr);
+		int window = std::stoi(args[1].c_str(), nullptr);
+		int temperature_compensation = std::stoi(args[2].c_str(), nullptr);
+
+		int res = set_update(n_scans, window, temperature_compensation);
+		bSuccess = WriteFile(hTx, &res, sizeof(res), &dwBytes, nullptr);
+		if (!bSuccess || dwBytes != sizeof(res)) {
+			ExitProcess(GetLastError());
+		}
+	}
+	else if (strcmp(cmd, "set_x_timing") == 0) {
+		int rate = std::stoi(args[0].c_str(), nullptr);
+		set_x_timing(rate);
+	}
+	else if (strcmp(cmd, "device_name") == 0) {
+		int channel = std::stoi(args[0].c_str(), nullptr);
+		std::string name = device_name(channel);
+		if (name.empty()) {
+			char empty[BUFSIZE] = { 0 };
+			bSuccess = WriteFile(hTx, empty, sizeof(empty), &dwBytes, nullptr);
+			if (!bSuccess || dwBytes != sizeof(empty)) {
+				ExitProcess(GetLastError());
+			}
+		}
+		else {
+			char buffer[BUFSIZE] = { 0 };
+			strncpy_s(buffer, name.c_str(), sizeof(buffer) - 1);
+			bSuccess = WriteFile(hTx, buffer, sizeof(buffer), &dwBytes, nullptr);
+			if (!bSuccess || dwBytes != sizeof(buffer)) {
+				ExitProcess(GetLastError());
+			}
+		}
+	}
+	else if (strcmp(cmd, "calibration_coefficients") == 0) {
+		_int16 channel = std::stoi(args[0].c_str(), nullptr);
+		double c1, c2, c3, c4;
+		int res = calibration_coefficients(channel, &c1, &c2, &c3, &c4);
+		bSuccess = WriteFile(hTx, &res, sizeof(res), &dwBytes, nullptr);
+		if (!bSuccess || dwBytes != sizeof(res)) {
+			ExitProcess(GetLastError());
+		}
+		if (res == 0) {
+			double coeffs[] = { c1, c2, c3, c4 };
+			bSuccess = WriteFile(hTx, coeffs, sizeof(double) * 4, &dwBytes, nullptr);
+			if (!bSuccess || dwBytes != sizeof(double) * 4) {
+				ExitProcess(GetLastError());
+			}
+		}
+	}
+	else if (strcmp(cmd, "initialize_spectrometer") == 0) {
+		int integration_time = std::stoi(args[0].c_str(), nullptr);
+		int scans_to_avg = std::stoi(args[1].c_str(), nullptr);
+		int smoothing_window = std::stoi(args[2].c_str(), nullptr);
+		int x_timing = std::stoi(args[3].c_str(), nullptr);
+		BOOL temperature_compensation = (args[4] == "1") ? TRUE : FALSE;
+		initialize_spectrometer(integration_time, scans_to_avg, smoothing_window, x_timing, temperature_compensation);
+	}
+	else if (strcmp(cmd, "gain_table") == 0) {
+		char table_str_raw[BUFSIZE] = { 0 };
+		int gain_table[10] = { 0 };
+		_int16 channel = std::stoi(args[0].c_str(), nullptr);
+		get_gain_table(channel, table_str_raw);
+		table_str_raw[BUFSIZE - 1] = '\0';
+		string table_str(table_str_raw);
+		parse_gain_table(table_str, gain_table);
+
+		bSuccess = WriteFile(hTx, gain_table, sizeof(gain_table), &dwBytes, nullptr);
+		if (!bSuccess || dwBytes != sizeof(gain_table)) {
+			ExitProcess(GetLastError());
+		}
+	}
+	else if (strcmp(cmd, "read_spectrometer_c") == 0) {
+		int channel = std::stoi(args[0].c_str(), nullptr);
+		int status = read_spectrometer_c(channel, data);
+
+		bSuccess = WriteFile(hTx, &status, sizeof(status), &dwBytes, nullptr);
+		if (!bSuccess || dwBytes != sizeof(status)) {
+			ExitProcess(GetLastError());
+		}
+
+		if (status == 0) {
+			bSuccess = WriteFile(hTx, data, sizeof(data), &dwBytes, nullptr);
+			if (!bSuccess || dwBytes != sizeof(data)) {
+				ExitProcess(GetLastError());
+			}
+		}
+	}
+	else {
+		std::cerr << "Unknown command: " << cmd << std::endl;
+		ExitProcess(ERROR_PROC_NOT_FOUND);
+	}
+	return true;
 }
 
 /**
@@ -274,6 +342,7 @@ void parse_command(const char* input, char* command, std::vector<std::string>& a
 	strncpy_s(command, BUFSIZE, cmd.c_str(), _TRUNCATE);
 	command[BUFSIZE - 1] = '\0';
 
+	args.clear();
 	std::string arg;
 	while (iss >> arg) {
 		args.push_back(arg);
@@ -285,6 +354,10 @@ bool stellarnet_path(LPWSTR path) {
 	PWSTR program_files;
 	HRESULT res;
 	size_t env_len;
+
+	std::string log_msg;
+	log_msg = std::string("[cmd] stellarnet_path");
+	log(log_msg);
 
 	res = SHGetKnownFolderPath(FOLDERID_ProgramFiles, 0, nullptr, &program_files);
 	if (!SUCCEEDED(res)) {
@@ -300,6 +373,9 @@ bool stellarnet_path(LPWSTR path) {
 
 	CoTaskMemFree(program_files);
 	if (dir_exists(path_t)) {
+		log_msg = std::string("[resp] stellarnet_path");
+		log(log_msg);
+
 		wcscpy_s(path, MAX_PATH, path_t);
 		return true;
 	}
@@ -314,8 +390,11 @@ bool stellarnet_path(LPWSTR path) {
 		std::wcerr << L"Failed to combine paths." << std::endl;
 		ExitProcess(GetLastError());
 	};
-	
+
 	if (dir_exists(path_t)) {
+		log_msg = std::string("[resp] stellarnet_path");
+		log(log_msg);
+
 		wcscpy_s(path, MAX_PATH, path_t);
 		return true;
 	}
@@ -407,7 +486,7 @@ int open() {
 }
 
 void close() {
-	if (g_LibraryOpen != TRUE) {
+	if (!g_LibraryOpen) {
 		return;
 	}
 
@@ -429,6 +508,7 @@ int device_count() {
 void set_integration_time(int rate) {
 	if (!g_LibraryOpen) {
 		std::cerr << "Stellarnet library not open. You must call `open` before any other commands." << std::endl;
+		return;
 	}
 
 	SWDrate(rate);
@@ -464,6 +544,7 @@ int set_update(int n_scans, int window, int temperature_compensation) {
 void set_x_timing(int rate) {
 	if (!g_LibraryOpen) {
 		std::cerr << "Stellarnet library not open. You must call `open` before any other commands." << std::endl;
+		return;
 	}
 
 	SWDxtrate(rate);
@@ -472,6 +553,7 @@ void set_x_timing(int rate) {
 void read_ee_prom(_int16 address, _int16 length, char* data) {
 	if (!g_LibraryOpen) {
 		std::cerr << "Stellarnet library not open. You must call `open` before any other commands." << std::endl;
+		return;
 	}
 
 	SWDeeRead(address, length, data);
@@ -483,7 +565,7 @@ int new_device(int pFunc, int pval1, int pval2, int pval3) {
 
 std::string device_name(_int16 channel) {
 	static const _int16 NAME_ADDR = 0x20;
-	char buffer[BUFSIZE] = {0};
+	char buffer[BUFSIZE] = { 0 };
 	std::string empty = "";
 
 	if (!SWDeeRead(channel, NAME_ADDR, buffer)) {
@@ -585,7 +667,7 @@ int read_spectrometer_c(_int16 channel, float* data) {
 			Sleep(1);
 		}
 
-		status = SWDscanLV(channel, data); 
+		status = SWDscanLV(channel, data);
 		attempts++;
 		if (attempts > 3000) {
 			break;
@@ -627,6 +709,17 @@ std::wstring string_to_wchar(const std::string& input) {
 }
 
 
+static std::string narrow_from_wide(const WCHAR* wpath) {
+	if (!wpath) return std::string();
+	int size = WideCharToMultiByte(CP_UTF8, 0, wpath, -1, nullptr, 0, nullptr, nullptr);
+	if (size <= 0) return std::string();
+	std::string out(size - 1, '\0');
+	WideCharToMultiByte(CP_UTF8, 0, wpath, -1, &out[0], size, nullptr, nullptr);
+	return out;
+}
+
+
+
 int string_to_int(string value) {
 	string temp;
 	for (size_t i = 0; i < value.length(); i++) {
@@ -648,7 +741,32 @@ bool dir_exists(LPWSTR path) {
 		return false;
 
 	if (attrs & FILE_ATTRIBUTE_DIRECTORY)
-		return true; 
+		return true;
 
 	return false;
+}
+
+void log(std::string& message) {
+	std::ofstream log_file;
+
+	if (g_loggingEnabled && g_logPath != nullptr) {
+		std::string path = narrow_from_wide(g_logPath);
+		log_file.open(path, std::ios_base::app);
+		if (log_file.is_open()) {
+			log_file << "{\"source\": \"server\", \"timestamp\": \"" << time_now_str() << "\", \"msg\": \"" << message << "\"}" << std::endl;
+			log_file.close();
+		}
+		
+	}
+}
+
+std::string time_now_str() {
+	struct tm local_time;
+	errno_t err;
+	auto now = std::chrono::system_clock::now();
+	std::time_t current_time = std::chrono::system_clock::to_time_t(now);
+	err = localtime_s(&local_time, &current_time);
+	char buffer[40];
+	std::strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S", &local_time);
+	return buffer;
 }

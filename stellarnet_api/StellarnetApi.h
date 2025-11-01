@@ -17,9 +17,24 @@ void init(const char* server_exe_path);
 
 /**
  @brief Kill the StellarNet API server process.
- */ 
+ */
 extern "C" STELLARNETAPI_API
 void kill();
+
+/**
+ @brief Enable logging to a specified file.
+ @param path Path to the log file.
+ @note Does not require `open` to be called first.
+ */
+extern "C" STELLARNETAPI_API
+void enable_logging(const char* path);
+
+/**
+ @brief Disable logging.
+ @note Does not require `open` to be called first.
+ */
+extern "C" STELLARNETAPI_API
+void disable_logging();
 
 /**
  @brief Get the path to the StellarNet program folder.
