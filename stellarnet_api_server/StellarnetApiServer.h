@@ -91,5 +91,16 @@ int new_device(int pFunc, int pval1, int pval2, int pval3);
 std::string device_name(_int16 chan);
 int calibration_coefficients(_int16 channel, double* c1, double* c2, double* c3, double* c4);
 void initialize_spectrometer(int integration_time, int scans_to_avg, int smoothing_window, int x_timing, BOOL temperature_compensation);
+
+/**
+ * @brief Parses a gain table string into an array of integers.
+ * @param table_str String representation of the gain table.
+ * @param gain_table Gain table data.
+ * @note `gain_table` should be an array of size 10.
+ */
 void get_gain_table(_int16 channel, char* table);
+
+/**
+ * @brief Attempts to read data from a spectrometer.
+ */
 int read_spectrometer_c(_int16 channel, float* data);

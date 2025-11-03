@@ -16,11 +16,11 @@ Python bindings for legacy StellarNet spectrometers.
 ### Get started
 + Ensure Visual Studio (not VS Code) is installed with the `Desktop development with C++` workload installed. You may have to install additional packages, such as the `Windows 11 SDK`.
 + Ensure the Stellarnet drivers are installed. You may have to replace the default drivers with updated ones.
-0. Open `stellarnet_api/stellarnet_api.sln` in Visual Studio (not VS Code).
+0. Open `stellarnet_api/stellarnet_api.sln` in Visual Studio (not VS Code) using **Run as administrator**.
 1. Open the solution properties (right click on `Solution stellarnet_api` in the `Solution explorer` pane) and set `Common properties > Configure Startup Projects` to `Single startup project` with `stellarnet_api_server` as the main project. The rest of the solution's settings should be set as needed.
 2. Start debugging the program by poressing `F5`. This should open a terminal
 3. Test the program is running correctly by submitting the command `stellarnet_path`. The response should be something like `C:\Program Files\StellarNet\SpectraWiz`.
-4. Submit the `open` command. You must run this before running any other command.
+4. Submit the `open` command. You must run this before running any other command. If an error occurs, ensure you are running Visual Studio as an administrator.
 5. You should not be able to run any command you want.
 
 ## Logging
