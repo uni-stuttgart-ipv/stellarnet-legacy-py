@@ -3,6 +3,11 @@ Python bindings for legacy StellarNet spectrometers.
 
 **All programs must be run as admin.**
 
+## Install
+```sh
+pip install stellarnet-legacy
+```
+
 ## Components
 + `stellarnet-legacy`: Python API library.
 + `stellarnet_api`: 64-bit C++ message broker that relays messages bewteen `stellarnet-legacy` and `stellarnet_api_server`.
