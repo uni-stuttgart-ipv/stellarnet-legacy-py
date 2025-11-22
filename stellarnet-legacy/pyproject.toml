@@ -36,16 +36,6 @@ Source = "https://github.com//uni-stuttgart-ipv/stellarnet-legacy-py"
 [tool.hatch.version]
 path = "src/stellarnet_legacy/__about__.py"
 
-[tool.hatch.build]
-include = [
-  "src/stellarnet_legacy/data/*"
-]
-
-[tool.hatch.build.targets.wheel]
-include = [
-  "stellarnet_legacy/data/*"
-]
-
 [tool.hatch.envs.types]
 extra-dependencies = [
   "mypy>=1.0.0",
