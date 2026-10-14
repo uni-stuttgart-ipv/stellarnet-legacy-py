@@ -1,7 +1,8 @@
-from typing import Union, Optional
-from importlib.resources import files, path
 import ctypes as c
+from importlib.resources import files
+
 import numpy as np
+
 from . import kinds
 from .lib import dll
 
@@ -19,7 +20,7 @@ def init() -> None:
 
 def kill() -> None:
     """Kill the message server."""
-    dll.kill
+    dll.kill()
 
 
 def open() -> None:
@@ -28,7 +29,7 @@ def open() -> None:
     """
     res = dll.open()
     if res != True:
-        RuntimeError("Could not open Stellarnet DLL")
+        raise RuntimeError("Could not open Stellarnet DLL")
 
 
 def close() -> None:
@@ -52,7 +53,7 @@ def disable_logging() -> None:
     dll.disable_logging()
 
 
-def stellarnet_path() -> Optional[str]:
+def stellarnet_path() -> str | None:
     """
     Returns:
         Optional[str]: Path to StellarNet program resources or None if not found.
@@ -73,7 +74,7 @@ def set_integration_time(time: int) -> None:
     dll.set_integration_time(time)
 
 
-def scan(channel: int) -> Union[np.ndarray, kinds.ScanStatus]:
+def scan(channel: int) -> np.ndarray | kinds.ScanStatus:
     """Acquire a spectrometer's scan data.
 
     Note:
@@ -95,7 +96,7 @@ def scan(channel: int) -> Union[np.ndarray, kinds.ScanStatus]:
     return np.array(data)
 
 
-def scan_c(channel: int) -> Union[np.ndarray, kinds.ScanStatus]:
+def scan_c(channel: int) -> np.ndarray | kinds.ScanStatus:
     """Acquire spectrometer scan data
 
     Note:
@@ -218,7 +219,7 @@ def gain_table(
     return (gain_values, base_values)
 
 
-def read_spectrometer_c(channel: int) -> Union[np.ndarray, kinds.ScanStatus]:
+def read_spectrometer_c(channel: int) -> np.ndarray | kinds.ScanStatus:
     """Read a spectrum.
 
     Args:
